@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rendicontazione & Pianificazione Giorni S / F</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- React & ReactDOM CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX compilation in browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="text-slate-800 bg-slate-50 min-h-screen">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // Configurazione predefinita dei semestri
+        const DEFAULT_SEMESTERS = {
+            '2S_2026': {
+                id: '2S_2026',
+                title: '2° Semestre 2026',
+                subtitle: 'Settembre - Dicembre 2026',
+                year: 2026,
+                startMonth: 8, // 0-indexed: Settembre (8)
+                endMonth: 11,  // Dicembre (11)
+                defaultS: 51,
+                defaultF: 4,
+                months: [
+                    { name: 'Settembre 2026', year: 2026, month: 8 },
+                    { name: 'Ottobre 2026', year: 2026, month: 9 },
+                    { name: 'Novembre 2026', year: 2026, month: 10 },
+                    { name: 'Dicembre 2026', year: 2026, month: 11 }
+                ]
+            },
+            '1S_2027': {
+                id: '1S_2027',
+                title: '1° Semestre 2027',
+                subtitle: 'Gennaio - Giugno 2027',
+                year: 2027,
+                startMonth: 0, // Gennaio (0)
+                endMonth: 5,   // Giugno (5)
+                defaultS: 75,
+                defaultF: 6,
+                months: [
+                    { name: 'Gennaio 2027', year: 2027, month: 0 },
+                    { name: 'Febbraio 2027', year: 2027, month: 1 },
+                    { name: 'Marzo 2027', year: 2027, month: 2 },
+                    { name: 'Aprile 2027', year: 2027, month: 3 },
+                    { name: 'Maggio 2027', year: 2027, month: 4 },
+                    { name: 'Giugno 2027', year: 2027, month: 5 }
+                ]
+            },
+            '2S_2027': {
+                id: '2S_2027',
+                title: '2° Semestre 2027',
+                subtitle: 'Luglio - Dicembre 2027',
+                year: 2027,
+                startMonth: 6, // Luglio (6)
+                endMonth: 11,  // Dicembre (11)
+                defaultS: 75,
+                defaultF: 6,
+                months: [
+                    { name: 'Luglio 2027', year: 2027, month: 6 },
+                    { name: 'Agosto 2027', year: 2027, month: 7 },
+                    { name: 'Settembre 2027', year: 2027, month: 8 },
+                    { name: 'Ottobre 2027', year: 2027, month: 9 },
+                    { name: 'Novembre 2027', year: 2027, month: 10 },
+                    { name: 'Dicembre 2027', year: 2027, month: 11 }
+                ]
+            }
+        };
+
+        // Calcola giorni lavorativi (Lun-Ven) totali in un mese
+        function getWorkingDaysInMonth(year, month) {
+            const date = new Date(year, month, 1);
+            let count = 0;
+            while (date.getMonth() === month) {
+                const dayOfWeek = date.getDay();
+                if (dayOfWeek !== 0 && dayOfWeek !== 6) { // 0 = Dom, 6 = Sab
+                    count++;
+                }
+                date.setDate(date.getDate() + 1);
+            }
+            return count;
+        }
+
+        // Calcola i giorni lavorativi residui dal giorno odierno a fine mese
+        function getRemainingWorkingDaysInMonth(year, month, todayDate = new Date()) {
+            const today = new Date(todayDate);
+            today.setHours(0, 0, 0, 0);
+
+            const monthStart = new Date(year, month, 1);
+            const monthEnd = new Date(year, month + 1, 0);
+
+            // Se il mese è già completamente passato
+            if (today > monthEnd) {
+                return 0;
+            }
+
+            // Data da cui iniziare il conteggio nel mese
+            let startDate = new Date(monthStart);
+            if (today >= monthStart && today <= monthEnd) {
+                startDate = new Date(today);
+            }
+
+            let count = 0;
+            const current = new Date(startDate);
+
+            while (current <= monthEnd) {
+                const dayOfWeek = current.getDay();
+                if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                    count++;
+                }
+                current.setDate(current.getDate() + 1);
+            }
+
+            return count;
+        }
+
+        function App() {
+            const [activeSemesterKey, setActiveSemesterKey] = useState('2S_2026');
+            
+            // Stato data di riferimento (default OGGI)
+            const [customDate, setCustomDate] = useState(() => new Date().toISOString().split('T')[0]);
+            
+            // Parametri Monte Giorni iniziali per semestre
+            const [semesterParams, setSemesterParams] = useState({
+                '2S_2026': { S: 51, F: 4 },
+                '1S_2027': { S: 75, F: 6 },
+                '2S_2027': { S: 75, F: 6 },
+            });
+
+            // Giorni Rendicontati inseriti dall'utente { '2S_2026': { 0: { S: 10, F: 1 }, ... } }
+            const [rendicontati, setRendicontati] = useState({
+                '2S_2026': {},
+                '1S_2027': {},
+                '2S_2027': {}
+            });
+
+            const [showHelp, setShowHelp] = useState(false);
+
+            const activeSemesterConfig = DEFAULT_SEMESTERS[activeSemesterKey];
+            const currentParams = semesterParams[activeSemesterKey];
+            const currentRendicontati = rendicontati[activeSemesterKey] || {};
+
+            const calculationResults = useMemo(() => {
+                const referenceDate = new Date(customDate);
+                const monthsData = activeSemesterConfig.months.map((m, index) => {
+                    const totalWorking = getWorkingDaysInMonth(m.year, m.month);
+                    const remainingWorking = getRemainingWorkingDaysInMonth(m.year, m.month, referenceDate);
+                    
+                    const rendS = parseFloat(currentRendicontati[index]?.S) || 0;
+                    const rendF = parseFloat(currentRendicontati[index]?.F) || 0;
+
+                    return {
+                        ...m,
+                        index,
+                        totalWorking,
+                        remainingWorking,
+                        rendS,
+                        rendF,
+                        totalRend: rendS + rendF
+                    };
+                });
+
+                // 1. Totale Rendicontato fino ad ora
+                const totalRendS = monthsData.reduce((acc, m) => acc + m.rendS, 0);
+                const totalRendF = monthsData.reduce((acc, m) => acc + m.rendF, 0);
+
+                // 2. Monte Giorni Residuo da Distribuire
+                const remainingS_ToDistribute = Math.max(0, currentParams.S - totalRendS);
+                const remainingF_ToDistribute = Math.max(0, currentParams.F - totalRendF);
+
+                // 3. Mesi disponibili per la distribuzione (con giorni lavorativi residui > 0)
+                const availableMonths = monthsData.filter(m => m.remainingWorking > 0);
+                const totalRemainingWorkingDaysInSemester = availableMonths.reduce((acc, m) => acc + m.remainingWorking, 0);
+
+                // 4. Algoritmo di distribuzione uniforme in numeri INTERI con Cap sui giorni residui
+                let allocatedS_Acc = 0;
+                let allocatedF_Acc = 0;
+
+                const distributedMonths = monthsData.map((m) => {
+                    let progS = 0;
+                    let progF = 0;
+
+                    if (m.remainingWorking > 0 && totalRemainingWorkingDaysInSemester > 0) {
+                        // Proporzione sui giorni lavorativi residui del mese
+                        const weight = m.remainingWorking / totalRemainingWorkingDaysInSemester;
+                        
+                        // Calcolo distribuito con conguaglio progressivo per garantire numeri interi esatti
+                        const targetS = Math.round(remainingS_ToDistribute * weight);
+                        const targetF = Math.round(remainingF_ToDistribute * weight);
+
+                        // Applica Cap alla capienza dei giorni lavorativi residui del mese
+                        progS = Math.min(m.remainingWorking, targetS);
+                        progF = Math.min(Math.max(0, m.remainingWorking - progS), targetF);
+                    }
+
+                    // Calcolo Rimanenza per Mese
+                    const rimS = progS - m.rendS;
+                    const rimF = progF - m.rendF;
+                    const rimTotal = (progS + progF) - m.totalRend;
+
+                    return {
+                        ...m,
+                        progS,
+                        progF,
+                        progTotal: progS + progF,
+                        rimS,
+                        rimF,
+                        rimTotal,
+                        hasNegativeRim: rimS < 0 || rimF < 0 || rimTotal < 0,
+                        exceedsCap: (progS + progF) > m.remainingWorking
+                    };
+                });
+
+                // Aggiustamento finale arrotondamenti per garantire che la somma dei programmati sia pari al Monte Residuo
+                // (se c'è capienza disponibile nei mesi)
+                let sumProgS = distributedMonths.reduce((a, b) => a + b.progS, 0);
+                let sumProgF = distributedMonths.reduce((a, b) => a + b.progF, 0);
+
+                // Verifiche e allarmi
+                const hasMonthlyNegatives = distributedMonths.some(m => m.hasNegativeRim);
+                const isSemesterSExceeded = totalRendS > currentParams.S;
+                const isSemesterFExceeded = totalRendF > currentParams.F;
+                const isSemesterTotalExceeded = isSemesterSExceeded || isSemesterFExceeded;
+                const hasCapExceeded = distributedMonths.some(m => m.exceedsCap);
+
+                return {
+                    monthsData: distributedMonths,
+                    totalRendS,
+                    totalRendF,
+                    totalRend: totalRendS + totalRendF,
+                    remainingS_ToDistribute: currentParams.S - totalRendS,
+                    remainingF_ToDistribute: currentParams.F - totalRendF,
+                    sumProgS,
+                    sumProgF,
+                    sumProgTotal: sumProgS + sumProgF,
+                    totalWorkingDays: monthsData.reduce((acc, m) => acc + m.totalWorking, 0),
+                    totalRemainingWorkingDays: monthsData.reduce((acc, m) => acc + m.remainingWorking, 0),
+                    hasMonthlyNegatives,
+                    isSemesterTotalExceeded,
+                    isSemesterSExceeded,
+                    isSemesterFExceeded,
+                    hasCapExceeded
+                };
+            }, [activeSemesterKey, customDate, semesterParams, rendicontati]);
+
+            const handleParamChange = (type, val) => {
+                const num = Math.max(0, parseInt(val) || 0);
+                setSemesterParams(prev => ({
+                    ...prev,
+                    [activeSemesterKey]: {
+                        ...prev[activeSemesterKey],
+                        [type]: num
+                    }
+                }));
+            };
+
+            const handleRendicontatoChange = (monthIndex, type, val) => {
+                const num = val === '' ? '' : Math.max(0, parseInt(val) || 0);
+                setRendicontati(prev => ({
+                    ...prev,
+                    [activeSemesterKey]: {
+                        ...prev[activeSemesterKey],
+                        [monthIndex]: {
+                            ...prev[activeSemesterKey]?.[monthIndex],
+                            [type]: num
+                        }
+                    }
+                }));
+            };
+
+            const handleResetSemester = () => {
+                setSemesterParams(prev => ({
+                    ...prev,
+                    [activeSemesterKey]: {
+                        S: activeSemesterConfig.defaultS,
+                        F: activeSemesterConfig.defaultF
+                    }
+                }));
+                setRendicontati(prev => ({
+                    ...prev,
+                    [activeSemesterKey]: {}
+                }));
+            };
+
+            return (
+                <div className="min-h-screen pb-12">
+                    {/* Header Top Bar */}
+                    <header className="bg-slate-900 text-white border-b border-slate-800 shadow-lg sticky top-0 z-30">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                            <div className="flex items-center space-x-3">
+                                <div className="p-2.5 bg-blue-600 rounded-xl shadow-md">
+                                    <i className="fa-solid fa-calendar-check text-xl"></i>
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold tracking-tight">Rendicontazione Giorni Lavorativi S / F</h1>
+                                    <p className="text-xs text-slate-400">Pianificazione dinamica e tracciamento in tempo reale</p>
+                                </div>
+                            </div>
+
+                            {/* Controlli data odierna e help */}
+                            <div className="flex items-center space-x-3 text-sm">
+                                <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5">
+                                    <label className="text-xs text-slate-400 mr-2 font-medium">Data Apertura / Riferimento:</label>
+                                    <input 
+                                        type="date" 
+                                        value={customDate}
+                                        onChange={(e) => setCustomDate(e.target.value)}
+                                        className="bg-slate-900 text-blue-400 font-semibold border border-slate-700 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                                <button 
+                                    onClick={() => setShowHelp(!showHelp)}
+                                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition border border-slate-700 text-xs flex items-center space-x-1"
+                                    title="Guida all'uso"
+                                >
+                                    <i className="fa-solid fa-circle-question"></i>
+                                    <span className="hidden sm:inline">Guida</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Semestri Tabs */}
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-2 overflow-x-auto pt-2">
+                            {Object.values(DEFAULT_SEMESTERS).map(sem => {
+                                const isActive = sem.id === activeSemesterKey;
+                                return (
+                                    <button
+                                        key={sem.id}
+                                        onClick={() => setActiveSemesterKey(sem.id)}
+                                        className={`py-3 px-5 text-sm font-medium border-b-2 whitespace-nowrap transition-all flex items-center space-x-2 ${
+                                            isActive
+                                                ? 'border-blue-500 text-blue-400 bg-slate-800/80 rounded-t-lg'
+                                                : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                                        }`}
+                                    >
+                                        <i className={`fa-solid ${isActive ? 'fa-folder-open text-blue-400' : 'fa-folder text-slate-500'}`}></i>
+                                        <span>{sem.title}</span>
+                                        <span className="text-xs opacity-60">({sem.subtitle})</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </header>
+
+                    {}
+                    {showHelp && (
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+                            <div className="bg-blue-950/40 border border-blue-800/50 rounded-2xl p-5 text-sm text-blue-200 relative shadow-md">
+                                <button 
+                                    onClick={() => setShowHelp(false)}
+                                    className="absolute top-4 right-4 text-blue-400 hover:text-white"
+                                >
+                                    <i className="fa-solid fa-xmark text-lg"></i>
+                                </button>
+                                <h3 className="font-semibold text-blue-300 mb-2 flex items-center">
+                                    <i className="fa-solid fa-lightbulb mr-2 text-yellow-400"></i> Come funziona l'applicazione
+                                </h3>
+                                <ul className="list-disc list-inside space-y-1 text-xs sm:text-sm text-slate-300">
+                                    <li><strong>Giorni Lavorativi Residui:</strong> Vengono calcolati automaticamente ad ogni apertura in base alla data di riferimento corrente. I mesi trascorsi hanno 0 giorni residui.</li>
+                                    <li><strong>Distribuzione Uniforme Intera:</strong> La quota programmata di giorni <strong>S</strong> ed <strong>F</strong> distribuisce in numeri interi il monte residuo proporzionalmente ai soli giorni lavorativi residui del mese.</li>
+                                    <li><strong>Cap Capienza Residua:</strong> I giorni programmati (S + F) non possono mai superare i giorni lavorativi residui di ciascun mese.</li>
+                                    <li><strong>Rendicontazione ed Aggiornamento:</strong> Inserendo i giorni già rendicontati nelle celle evidenziate in giallo, il monte residuo da distribuire sui mesi futuri si aggiorna in tempo reale.</li>
+                                    <li><strong>Allarmi:</strong> Se una rimanenza mensile o il totale semestrale diventano negativi, il sistema attiva avvisi visivi e segnalazioni nel pannello di controllo.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    )}
+
+                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6">
+
+                        {}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Card 1: Monte Iniziale */}
+                            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Monte Semestrale Iniziale</p>
+                                        <h3 className="text-lg font-bold text-slate-800">{activeSemesterConfig.title}</h3>
+                                    </div>
+                                    <div className="p-2 bg-slate-100 rounded-lg text-slate-600">
+                                        <i className="fa-solid fa-[#1e293b] fa-sliders"></i>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-slate-100">
+                                    <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-100">
+                                        <label className="block text-xs font-semibold text-blue-700 mb-1">Giorni "S"</label>
+                                        <input 
+                                            type="number" 
+                                            value={currentParams.S} 
+                                            onChange={(e) => handleParamChange('S', e.target.value)}
+                                            className="w-full bg-white font-bold text-blue-900 border border-blue-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                        />
+                                    </div>
+                                    <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-100">
+                                        <label className="block text-xs font-semibold text-emerald-700 mb-1">Giorni "F"</label>
+                                        <input 
+                                            type="number" 
+                                            value={currentParams.F} 
+                                            onChange={(e) => handleParamChange('F', e.target.value)}
+                                            className="w-full bg-white font-bold text-emerald-900 border border-emerald-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 2: Totale Rendicontato */}
+                            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Totale Già Rendicontato</p>
+                                        <h3 className="text-2xl font-black text-slate-800 mt-1">
+                                            {calculationResults.totalRend} <span className="text-xs font-normal text-slate-500">giorni</span>
+                                        </h3>
+                                    </div>
+                                    <div className="p-2 bg-amber-100 rounded-lg text-amber-700">
+                                        <i className="fa-solid fa-pen-to-square"></i>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-slate-100">
+                                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <span className="text-xs text-slate-500 block font-medium">Rendicontati S</span>
+                                        <span className="text-base font-bold text-slate-800">{calculationResults.totalRendS} gg</span>
+                                    </div>
+                                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <span className="text-xs text-slate-500 block font-medium">Rendicontati F</span>
+                                        <span className="text-base font-bold text-slate-800">{calculationResults.totalRendF} gg</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 3: Monte Residuo da Distribuire */}
+                            <div className={`rounded-2xl p-5 border shadow-sm flex flex-col justify-between transition-colors ${
+                                calculationResults.isSemesterTotalExceeded 
+                                    ? 'bg-rose-50 border-rose-300 text-rose-900' 
+                                    : 'bg-indigo-50/70 border-indigo-200 text-indigo-950'
+                            }`}>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wider opacity-75">Monte Residuo da Distribuire</p>
+                                        <h3 className="text-2xl font-black mt-1">
+                                            {calculationResults.remainingS_ToDistribute + calculationResults.remainingF_ToDistribute} <span className="text-xs font-normal opacity-75">giorni</span>
+                                        </h3>
+                                    </div>
+                                    <div className={`p-2 rounded-lg ${calculationResults.isSemesterTotalExceeded ? 'bg-rose-200 text-rose-800' : 'bg-indigo-200 text-indigo-800'}`}>
+                                        <i className={`fa-solid ${calculationResults.isSemesterTotalExceeded ? 'fa-triangle-exclamation' : 'fa-chart-pie'}`}></i>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-indigo-200/50">
+                                    <div className={`p-2.5 rounded-xl border ${calculationResults.remainingS_ToDistribute < 0 ? 'bg-rose-100 border-rose-300 text-rose-900 font-bold' : 'bg-white/80 border-indigo-100'}`}>
+                                        <span className="text-xs opacity-75 block font-medium">Residuo S</span>
+                                        <span className="text-base font-bold">{calculationResults.remainingS_ToDistribute} gg</span>
+                                    </div>
+                                    <div className={`p-2.5 rounded-xl border ${calculationResults.remainingF_ToDistribute < 0 ? 'bg-rose-100 border-rose-300 text-rose-900 font-bold' : 'bg-white/80 border-indigo-100'}`}>
+                                        <span className="text-xs opacity-75 block font-medium">Residuo F</span>
+                                        <span className="text-base font-bold">{calculationResults.remainingF_ToDistribute} gg</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {}
+                        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center">
+                                <i className="fa-solid fa-shield-halved mr-2 text-slate-500"></i> Pannello di Controllo & Validazione Vincoli
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                {/* Controllo 1: Cap Residui */}
+                                <div className={`p-3 rounded-xl border flex items-start space-x-3 text-xs font-medium ${
+                                    calculationResults.hasCapExceeded 
+                                        ? 'bg-amber-50 border-amber-300 text-amber-900' 
+                                        : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                                }`}>
+                                    <i className={`fa-solid ${calculationResults.hasCapExceeded ? 'fa-triangle-exclamation text-amber-600' : 'fa-circle-check text-emerald-600'} text-lg mt-0.5`}></i>
+                                    <div>
+                                        <p className="font-bold">Cap Capienza GG Residui</p>
+                                        <p className="opacity-90 mt-0.5">
+                                            {calculationResults.hasCapExceeded 
+                                                ? 'ATTENZIONE: Superamento capienza giorni residui in uno o più mesi!' 
+                                                : 'OK: Giorni programmati entro la capienza dei giorni residui mensili.'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Controllo 2: Residui Mensili Negativi */}
+                                <div className={`p-3 rounded-xl border flex items-start space-x-3 text-xs font-medium ${
+                                    calculationResults.hasMonthlyNegatives 
+                                        ? 'bg-amber-50 border-amber-300 text-amber-900' 
+                                        : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                                }`}>
+                                    <i className={`fa-solid ${calculationResults.hasMonthlyNegatives ? 'fa-triangle-exclamation text-amber-600' : 'fa-circle-check text-emerald-600'} text-lg mt-0.5`}></i>
+                                    <div>
+                                        <p className="font-bold">Stato Residui Mensili</p>
+                                        <p className="opacity-90 mt-0.5">
+                                            {calculationResults.hasMonthlyNegatives 
+                                                ? 'ATTENZIONE: Presenza di rimanenze mensili negative (sforamento quota).' 
+                                                : 'OK: Tutti i residui mensili risultano regolari.'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Controllo 3: Errore Critico Semestrale */}
+                                <div className={`p-3 rounded-xl border flex items-start space-x-3 text-xs font-medium ${
+                                    calculationResults.isSemesterTotalExceeded 
+                                        ? 'bg-rose-50 border-rose-300 text-rose-900' 
+                                        : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                                }`}>
+                                    <i className={`fa-solid ${calculationResults.isSemesterTotalExceeded ? 'fa-circle-xmark text-rose-600' : 'fa-circle-check text-emerald-600'} text-lg mt-0.5`}></i>
+                                    <div>
+                                        <p className="font-bold">Stato Totale Semestrale</p>
+                                        <p className="opacity-90 mt-0.5">
+                                            {calculationResults.isSemesterTotalExceeded 
+                                                ? 'ERRORE CRITICO: I giorni rendicontati superano il totale del semestre!' 
+                                                : 'OK: Rendicontazione semestrale entro il monte ore previsto.'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {}
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+                                <div>
+                                    <h2 className="text-lg font-bold text-slate-800">Tabella Rendicontazione e Pianificazione</h2>
+                                    <p className="text-xs text-slate-500">Mesi del semestre con calcolo dinamico ed input inserimenti</p>
+                                </div>
+                                <button
+                                    onClick={handleResetSemester}
+                                    className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg transition self-start sm:self-auto flex items-center space-x-1.5"
+                                >
+                                    <i className="fa-solid fa-rotate-right"></i>
+                                    <span>Ripristina Default Mese</span>
+                                </button>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse min-w-[900px]">
+                                    <thead>
+                                        <tr className="bg-slate-100/80 text-slate-600 text-xs font-bold uppercase tracking-wider border-b border-slate-200">
+                                            <th className="py-3.5 px-4">Mese / Anno</th>
+                                            <th className="py-3.5 px-3 text-center bg-slate-200/50 border-x border-slate-200">
+                                                GG Lavorativi<br/><span className="text-[10px] font-normal text-slate-500">Mese Intero</span>
+                                            </th>
+                                            <th className="py-3.5 px-3 text-center bg-slate-200/70 border-r border-slate-200">
+                                                GG Lavorativi Residui<br/><span className="text-[10px] font-normal text-slate-500">ad Oggi ({customDate})</span>
+                                            </th>
+                                            <th className="py-3.5 px-3 text-center bg-blue-50 text-blue-900 border-r border-blue-100" colSpan="2">
+                                                Distribuzione Programmata<br/><span className="text-[10px] font-normal text-blue-600">Interi Proporzionati (S | F)</span>
+                                            </th>
+                                            <th className="py-3.5 px-3 text-center bg-amber-50 text-amber-900 border-r border-amber-200/80" colSpan="2">
+                                                GIORNI GIÀ RENDICONTATI<br/><span className="text-[10px] font-normal text-amber-700">✏️ Input Inserimento Manuale</span>
+                                            </th>
+                                            <th className="py-3.5 px-3 text-center bg-slate-50" colSpan="2">
+                                                Rimanenza Mese<br/><span className="text-[10px] font-normal text-slate-500">(Programmati - Rendicontati)</span>
+                                            </th>
+                                        </tr>
+                                        <tr className="bg-slate-50 text-slate-500 text-[11px] font-semibold border-b border-slate-200">
+                                            <th className="py-1.5 px-4"></th>
+                                            <th className="py-1.5 px-3 border-x border-slate-200 text-center">Totale</th>
+                                            <th className="py-1.5 px-3 border-r border-slate-200 text-center">Residui</th>
+                                            <th className="py-1.5 px-3 text-center bg-blue-50/50 text-blue-800 border-r border-blue-100">S</th>
+                                            <th className="py-1.5 px-3 text-center bg-blue-50/50 text-blue-800 border-r border-blue-200">F</th>
+                                            <th className="py-1.5 px-3 text-center bg-amber-100/60 text-amber-900 border-r border-amber-200 font-bold">S</th>
+                                            <th className="py-1.5 px-3 text-center bg-amber-100/60 text-amber-900 border-r border-amber-200 font-bold">F</th>
+                                            <th className="py-1.5 px-3 text-center border-r border-slate-200">S</th>
+                                            <th className="py-1.5 px-3 text-center">F</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200 text-sm">
+                                        {calculationResults.monthsData.map((m) => {
+                                            const isPastMonth = m.remainingWorking === 0;
+
+                                            return (
+                                                <tr key={m.index} className={`hover:bg-slate-50/80 transition-colors ${isPastMonth ? 'bg-slate-50/50' : ''}`}>
+                                                    {/* Nome Mese */}
+                                                    <td className="py-3.5 px-4 font-semibold text-slate-800 flex items-center space-x-2">
+                                                        <span>{m.name}</span>
+                                                        {isPastMonth && (
+                                                            <span className="text-[10px] font-medium bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">Transito</span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* GG Lavorativi Totali */}
+                                                    <td className="py-3.5 px-3 text-center text-slate-600 font-medium bg-slate-50/50 border-x border-slate-200">
+                                                        {m.totalWorking}
+                                                    </td>
+
+                                                    {/* GG Lavorativi Residui */}
+                                                    <td className={`py-3.5 px-3 text-center font-bold border-r border-slate-200 ${
+                                                        m.remainingWorking > 0 ? 'text-blue-700 bg-blue-50/20' : 'text-slate-400'
+                                                    }`}>
+                                                        {m.remainingWorking}
+                                                    </td>
+
+                                                    {/* Programmati S */}
+                                                    <td className="py-3.5 px-3 text-center font-semibold text-blue-900 bg-blue-50/30 border-r border-blue-100">
+                                                        {m.progS}
+                                                    </td>
+
+                                                    {/* Programmati F */}
+                                                    <td className="py-3.5 px-3 text-center font-semibold text-emerald-900 bg-blue-50/30 border-r border-blue-200">
+                                                        {m.progF}
+                                                    </td>
+
+                                                    {/* INPUT: Rendicontati S */}
+                                                    <td className="py-2 px-2 bg-amber-50/60 border-r border-amber-200">
+                                                        <input 
+                                                            type="number" 
+                                                            min="0"
+                                                            placeholder="0"
+                                                            value={currentRendicontati[m.index]?.S ?? ''}
+                                                            onChange={(e) => handleRendicontatoChange(m.index, 'S', e.target.value)}
+                                                            className="w-full text-center font-bold text-amber-950 bg-amber-100/70 border border-amber-300 rounded-lg py-1.5 px-1 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 transition shadow-inner"
+                                                        />
+                                                    </td>
+
+                                                    {/* INPUT: Rendicontati F */}
+                                                    <td className="py-2 px-2 bg-amber-50/60 border-r border-amber-200">
+                                                        <input 
+                                                            type="number" 
+                                                            min="0"
+                                                            placeholder="0"
+                                                            value={currentRendicontati[m.index]?.F ?? ''}
+                                                            onChange={(e) => handleRendicontatoChange(m.index, 'F', e.target.value)}
+                                                            className="w-full text-center font-bold text-amber-950 bg-amber-100/70 border border-amber-300 rounded-lg py-1.5 px-1 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 transition shadow-inner"
+                                                        />
+                                                    </td>
+
+                                                    {/* Rimanenza S */}
+                                                    <td className={`py-3.5 px-3 text-center font-bold border-r border-slate-200 ${
+                                                        m.rimS < 0 ? 'bg-rose-100 text-rose-800' : 'text-slate-700'
+                                                    }`}>
+                                                        {m.rimS}
+                                                    </td>
+
+                                                    {/* Rimanenza F */}
+                                                    <td className={`py-3.5 px-3 text-center font-bold ${
+                                                        m.rimF < 0 ? 'bg-rose-100 text-rose-800' : 'text-slate-700'
+                                                    }`}>
+                                                        {m.rimF}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+
+                                    {}
+                                    <tfoot>
+                                        <tr className="bg-slate-900 text-white font-bold text-sm border-t-2 border-slate-800">
+                                            <td className="py-4 px-4 uppercase text-xs tracking-wider">Totale Semestre</td>
+                                            <td className="py-4 px-3 text-center border-x border-slate-800">{calculationResults.totalWorkingDays}</td>
+                                            <td className="py-4 px-3 text-center border-r border-slate-800 text-blue-400">{calculationResults.totalRemainingWorkingDays}</td>
+                                            
+                                            {/* Somma Programmati */}
+                                            <td className="py-4 px-3 text-center text-blue-300 border-r border-slate-800">{calculationResults.sumProgS}</td>
+                                            <td className="py-4 px-3 text-center text-emerald-300 border-r border-slate-800">{calculationResults.sumProgF}</td>
+                                            
+                                            {/* Somma Rendicontati */}
+                                            <td className={`py-4 px-3 text-center border-r border-slate-800 ${
+                                                calculationResults.isSemesterSExceeded ? 'bg-rose-900 text-rose-200 font-black' : 'text-amber-300'
+                                            }`}>
+                                                {calculationResults.totalRendS}
+                                            </td>
+                                            <td className={`py-4 px-3 text-center border-r border-slate-800 ${
+                                                calculationResults.isSemesterFExceeded ? 'bg-rose-900 text-rose-200 font-black' : 'text-amber-300'
+                                            }`}>
+                                                {calculationResults.totalRendF}
+                                            </td>
+                                            
+                                            {/* Somma Rimanenze */}
+                                            <td className={`py-4 px-3 text-center border-r border-slate-800 ${
+                                                (calculationResults.sumProgS - calculationResults.totalRendS) < 0 ? 'bg-rose-900 text-rose-200' : 'text-slate-200'
+                                            }`}>
+                                                {calculationResults.sumProgS - calculationResults.totalRendS}
+                                            </td>
+                                            <td className={`py-4 px-3 text-center ${
+                                                (calculationResults.sumProgF - calculationResults.totalRendF) < 0 ? 'bg-rose-900 text-rose-200' : 'text-slate-200'
+                                            }`}>
+                                                {calculationResults.sumProgF - calculationResults.totalRendF}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+
+                    </main>
+
+                    {/* Footer Credits */}
+                    <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 text-center text-xs text-slate-400">
+                        <p>Applicazione Reattiva di Rendicontazione e Pianificazione Giorni Lavorativi S & F</p>
+                    </footer>
+                </div>
+            );
+        }
+
+        const rootElement = document.getElementById('root');
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(<App />);
+    </script>
+</body>
+</html>

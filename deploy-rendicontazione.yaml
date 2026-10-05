@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rendicontazione-app
+  namespace: apps
+  labels:
+    app: rendicontazione-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rendicontazione-app
+  template:
+    metadata:
+      labels:
+        app: rendicontazione-app
+    spec:
+      containers:
+      - name: web
+        image: ghcr.io/agcolella/rendicontazione-app:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        # Limiti ottimizzati per prevenire saturazione di memoria sul Pi
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "20m"
+          limits:
+            memory: "32Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rendicontazione-service
+  namespace: apps
+spec:
+  type: LoadBalancer # Assegna un IP reale della tua LAN tramite MetalLB
+  selector:
+    app: rendicontazione-app
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rendicontazione-ingress
+  namespace: apps
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+  - host: rendicontazione.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: rendicontazione-service
+            port:
+              number: 80
