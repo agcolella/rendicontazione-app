@@ -17,48 +17,45 @@ jobs:
       packages: write
 
     steps:
-      # 1. Checkout del codice
+      # 1. Checkout del codice dal repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-# 2. VERIFICA SINTATTICA HTML (Senza dipendenza da npx)
+      # 2. VERIFICA SINTATTICA HTML
       - name: Validate HTML Structure
         run: |
           echo "🔍 Avvio verifica statica dell'applicazione..."
-          
-          # Individua il file HTML
           HTML_FILE=$(ls *.html 2>/dev/null | head -n 1)
-          
           if [ -z "$HTML_FILE" ]; then
             echo "❌ Errore: Nessun file HTML trovato nella root del repository!"
             exit 1
           fi
-
           echo "📄 File analizzato: $HTML_FILE"
-
-          # Controllo presenza tag di chiusura fondamentali
           if ! grep -i -q "</html>" "$HTML_FILE"; then
-            echo "❌ Errore: Il file $HTML_FILE non sembra essere un documento HTML valido (manca </html>)!"
+            echo "❌ Errore: Il file $HTML_FILE non sembra essere un documento HTML valido!"
             exit 1
           fi
-
           echo "✅ Struttura HTML di base corretta!"
 
-      # 3. VERIFICA MANIFEST KUBERNETES (In pure-shell o via Docker)
+      # 3. VERIFICA MANIFEST KUBERNETES (nella nuova cartella k8s/)
       - name: Validate Kubernetes Manifests
         run: |
-          echo "🔍 Validazione del file deploy-rendicontazione.yaml..."
-          
-          if [ ! -f deploy-rendicontazione.yaml ]; then
-            echo "❌ Errore: Manifest deploy-rendicontazione.yaml non trovato!"
+          echo "🔍 Validazione dei manifest nella cartella k8s/..."
+          if [ ! -d k8s ]; then
+            echo "❌ Errore: Cartella k8s/ non trovata!"
             exit 1
           fi
 
-          # Controllo presenza campi obbligatori nel manifest YAML
-          grep -q "kind: Deployment" deploy-rendicontazione.yaml
-          grep -q "kind: Service" deploy-rendicontazione.yaml
-          
-          echo "✅ Manifest YAML presente e strutturato correttamente!"
+          # Controllo presenza dei file principali
+          for file in k8s/*.yaml; do
+            echo "📋 Controllo file: $file"
+            if ! grep -q -E "kind: (Deployment|Service|IPAddressPool|L2Advertisement)" "$file"; then
+              echo "❌ Errore: $file non contiene una risorsa Kubernetes valida!"
+              exit 1
+            fi
+          done
+          echo "✅ Manifest YAML presenti e validi!"
+
       # 4. Autenticazione su GHCR
       - name: Log in to GHCR
         uses: docker/login-action@v3
