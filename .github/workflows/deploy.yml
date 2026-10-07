@@ -12,7 +12,7 @@ env:
 jobs:
   build-and-deploy:
     runs-on: self-hosted
-    timeout-minutes: 8 # Evita blocchi infiniti del runner in caso di saturazione risorse
+    timeout-minutes: 15 # Evita blocchi infiniti del runner in caso di saturazione risorse
 
     permissions:
       contents: read
@@ -93,17 +93,14 @@ jobs:
 #          cache-from: type=gha
 #          cache-to: type=gha,mode=max
 
-      # 6. Deploy e Rollout graduale su K3s
+      # 6. Deploy e Rollout ultra-rapido su K3s
       - name: Deploy to K3s Cluster
         run: |
           echo "🚀 Applicazione dei manifest Kubernetes..."
           kubectl apply -f k8s/ --validate=false
-          
-          echo "⏳ Attesa assestamento API server..."
-          sleep 5
 
-          echo "🔄 Riavvio rollout del deployment..."
-          kubectl rollout restart deployment/rendicontazione-app -n apps || true
-          
-          echo "📊 Verifica stato dei Pod..."
+          echo "🔄 Innesco riavvio del deployment rendicontazione-app..."
+          kubectl rollout restart deployment/rendicontazione-app -n apps
+
+          echo "📊 Stato dei Pod attivi:"
           kubectl get pods -n apps
