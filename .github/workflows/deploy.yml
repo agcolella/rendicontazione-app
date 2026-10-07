@@ -12,12 +12,14 @@ env:
 jobs:
   build-and-deploy:
     runs-on: self-hosted
+    timeout-minutes: 8 # Evita blocchi infiniti del runner in caso di saturazione risorse
+
     permissions:
       contents: read
       packages: write
 
     steps:
-      # 1. Checkout del codice dal repository
+      # 1. Checkout del codice
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -30,14 +32,13 @@ jobs:
             echo "❌ Errore: Nessun file HTML trovato nella root del repository!"
             exit 1
           fi
-          echo "📄 File analizzato: $HTML_FILE"
           if ! grep -i -q "</html>" "$HTML_FILE"; then
-            echo "❌ Errore: Il file $HTML_FILE non sembra essere un documento HTML valido!"
+            echo "❌ Errore: Il file $HTML_FILE non è un documento HTML valido!"
             exit 1
           fi
-          echo "✅ Struttura HTML di base corretta!"
+          echo "✅ Struttura HTML corretta!"
 
-      # 3. VERIFICA MANIFEST KUBERNETES (nella nuova cartella k8s/)
+      # 3. VERIFICA MANIFEST KUBERNETES
       - name: Validate Kubernetes Manifests
         run: |
           echo "🔍 Validazione dei manifest nella cartella k8s/..."
@@ -45,16 +46,13 @@ jobs:
             echo "❌ Errore: Cartella k8s/ non trovata!"
             exit 1
           fi
-
-          # Controllo presenza dei file principali
           for file in k8s/*.yaml; do
-            echo "📋 Controllo file: $file"
             if ! grep -q -E "kind: (Deployment|Service|IPAddressPool|L2Advertisement)" "$file"; then
               echo "❌ Errore: $file non contiene una risorsa Kubernetes valida!"
               exit 1
             fi
           done
-          echo "✅ Manifest YAML presenti e validi!"
+          echo "✅ Manifest YAML validi!"
 
       # 4. Autenticazione su GHCR
       - name: Log in to GHCR
@@ -64,7 +62,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. Build e Push dell'immagine Docker
+      # 5. Build e Push Docker alleggerito con cache locale
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -73,10 +71,13 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          # Abilita il riutilizzo della cache locale sul Raspberry Pi per velocizzare le build successive
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # 6. Deploy e Rollout su K3s
+      # 6. Deploy e Rollout graduale su K3s
       - name: Deploy to K3s Cluster
         run: |
           kubectl apply -f k8s/
           kubectl rollout restart deployment/rendicontazione-app -n apps
-          kubectl rollout status deployment/rendicontazione-app -n apps --timeout=90s
+          kubectl rollout status deployment/rendicontazione-app -n apps --timeout=120s
