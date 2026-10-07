@@ -54,26 +54,44 @@ jobs:
           done
           echo "✅ Manifest YAML validi!"
 
-      # 4. Autenticazione su GHCR
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. Build e Push Docker alleggerito con cache locale
+# 4. Autenticazione su GHCR
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # 5. Build e Push nativo (senza overhead di buildx)
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        run: |
+          echo "🔨 Build dell'immagine Docker in corso..."
+          docker build -t ghcr.io/agcolella/rendicontazione-app:latest -t ghcr.io/agcolella/rendicontazione-app:${{ github.sha }} .
+          
+          echo "🚀 Push su GHCR..."
+          docker push ghcr.io/agcolella/rendicontazione-app:latest
+          docker push ghcr.io/agcolella/rendicontazione-app:${{ github.sha }}
+
+
+
+      # 4. Autenticazione su GHCR
+#      - name: Log in to GHCR
+#        uses: docker/login-action@v3
+#        with:
+#          registry: ${{ env.REGISTRY }}
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#
+#      # 5. Build e Push Docker alleggerito con cache locale
+#      - name: Build and push Docker image
+#        uses: docker/build-push-action@v5
+#        with:
+#          context: .
+#          push: true
+#          tags: |
+#            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+#            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           # Abilita il riutilizzo della cache locale sul Raspberry Pi per velocizzare le build successive
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
 
       # 6. Deploy e Rollout graduale su K3s
       - name: Deploy to K3s Cluster
