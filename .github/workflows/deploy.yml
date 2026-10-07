@@ -64,7 +64,7 @@ jobs:
       - name: Build and push Docker image
         run: |
           echo "🔨 Build dell'immagine Docker in corso..."
-          docker build -t ghcr.io/agcolella/rendicontazione-app:latest -t ghcr.io/agcolella/rendicontazione-app:${{ github.sha }} .
+          docker build --network=host -t ghcr.io/agcolella/rendicontazione-app:latest -t ghcr.io/agcolella/rendicontazione-app:${{ github.sha }} .
           
           echo "🚀 Push su GHCR..."
           docker push ghcr.io/agcolella/rendicontazione-app:latest
