@@ -97,7 +97,7 @@ jobs:
       - name: Deploy to K3s Cluster
         run: |
           echo "🚀 Applicazione dei manifest Kubernetes..."
-          kubectl apply -f k8s/ --validate=false
+          kubectl apply -f k8s/03-app-deployment.yaml --validate=false
 
           echo "🔄 Innesco riavvio del deployment rendicontazione-app..."
           kubectl rollout restart deployment/rendicontazione-app -n apps
