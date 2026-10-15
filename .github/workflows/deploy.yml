@@ -50,11 +50,11 @@ jobs:
       # 5. Deploy e Rollout su K3s (Zorin OS)
       - name: Deploy to K3s Cluster
         run: |
-          echo "🚀 Applicazione dei manifest Kubernetes..."
-          kubectl apply -f k8s/
+          echo "🚀 Applicazione dei manifest Kubernetes per rendicontazione-app..."
+          kubectl apply -f k8s/03-app-deployment.yaml
 
-          echo "🔄 Riavvio rollout del deployment rendicontazione-app..."
+          echo "🔄 Esecuzione rollout del deployment..."
           kubectl rollout restart deployment/rendicontazione-app -n app-rendicontazione
-          
-          echo "📊 Verifica stato dei Pod attivi:"
-          kubectl get pods -n app-rendicontazione
+
+          echo "📊 Stato dei Pod attivi nel namespace app-rendicontazione:"
+          kubectl get pods -n app-rendicontazione -o wide

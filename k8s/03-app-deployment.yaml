@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: apps
+  name: app-rendicontazione
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rendicontazione-app
-  namespace: apps
+  namespace: app-rendicontazione
   labels:
     app: rendicontazione-app
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: rendicontazione-app
@@ -21,62 +21,50 @@ spec:
         app: rendicontazione-app
     spec:
       containers:
-      - name: web
-        image: ghcr.io/agcolella/rendicontazione-app:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 80
-        # Limiti ottimizzati per prevenire saturazione di memoria sul Pi
-        resources:
-          requests:
-            memory: "16Mi"
-            cpu: "20m"
-          limits:
-            memory: "32Mi"
-            cpu: "100m"
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 3
-          periodSeconds: 5
+        - name: rendicontazione-app
+          image: ghcr.io/agcolella/rendicontazione-app:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: rendicontazione-service
-  namespace: apps
+  namespace: app-rendicontazione
 spec:
-  type: LoadBalancer # Assegna un IP reale della tua LAN tramite MetalLB
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
   selector:
     app: rendicontazione-app
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 80
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: rendicontazione-ingress
-  namespace: apps
+  namespace: app-rendicontazione
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   rules:
-  - host: rendicontazione.local
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: rendicontazione-service
-            port:
-              number: 80
+    - host: rendicontazione.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rendicontazione-service
+                port:
+                  number: 80
